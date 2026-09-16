@@ -1,0 +1,67 @@
+Exercise 7: Summary Comparison
+
+1. Comparison table
+
+Program          | Collectives used          | Array allocation           | Manual summation on root?        | Final result available on
+-----------------|---------------------------|-----------------------------|-----------------------------------|----------------------------
+sum_bcast.c      | Bcast                     | Full array on every process | Yes (Recv loop over each process) | Root only
+sum_scatter.c    | Scatter                   | Full array on root only,    | Yes (Recv loop over each process) | Root only
+                 |                           | chunk on every process      |                                    |
+sum_gather.c     | Scatter, Gather           | Full array on root only,    | Yes (loop over all_sums array)    | Root only
+                 |                           | chunk on every process      |                                    |
+sum_reduce.c     | Scatter, Reduce           | Full array on root only,    | No (Reduce does the combining)    | Root only
+                 |                           | chunk on every process      |                                    |
+sum_allreduce.c  | Scatter, Allreduce        | Full array on root only,    | No (Allreduce does the combining) | All processes (same value)
+                 |                           | chunk on every process      |                                    |
+sum_scan.c       | Scatter, Scan             | Full array on root only,    | No (Scan does the combining)      | All processes, but each rank
+                 |                           | chunk on every process      |                                    | gets a DIFFERENT value
+                 |                           |                              |                                    | (last rank = global total)
+
+2. Timing results (seconds), N = 1,000,000, times from MPI_Wtime()
+
+Program          | np=2   | np=4   | np=8
+-----------------|--------|--------|--------
+sum_bcast        | 0.0132 | 0.0146 | 0.0144
+sum_scatter      | 0.0069 | 0.0032 | 0.0029
+sum_gather       | 0.0066 | 0.0035 | 0.0025
+sum_reduce       | 0.0050 | 0.0038 | 0.0023
+sum_allreduce    | 0.0063 | 0.0033 | 0.0074
+sum_scan         | 0.0099 | 0.0094 | 0.0095
+
+All 18 runs (6 programs x 3 process counts) printed Correct = YES.
+
+Observations:
+- sum_bcast is consistently the slowest across all three process counts
+  (0.0132 to 0.0146 sec), because every process still receives the FULL
+  1,000,000 element array over Bcast, so the amount of data moved does not
+  shrink as more processes are added. The other five programs use Scatter,
+  which divides the data, so each process receives less data per process
+  as np grows.
+- sum_gather and sum_reduce get noticeably faster as np increases (gather:
+  0.0066 to 0.0025 sec, reduce: 0.0050 to 0.0023 sec). This matches the
+  O(log P) tree based behaviour of Reduce, and Gather also benefits from
+  each process holding a smaller chunk to scatter and sum as np grows.
+- sum_allreduce and sum_scan stay in a similar, comparatively low range
+  across process counts rather than growing with np, consistent with them
+  using efficient collective algorithms internally (recursive doubling or
+  butterfly for Allreduce) rather than a simple root centric approach.
+- These are single machine (WSL2, one physical core group) timings on a
+  1,000,000 element array, so differences are on the order of milliseconds
+  and can vary run to run due to OS scheduling noise. The trend (Scatter
+  based approaches scaling better than full Bcast, Reduce style collectives
+  scaling better than manual Send/Recv or Gather + loop) matches the
+  algorithmic expectations from the README even though the absolute
+  numbers are noisy at this problem size.
+
+3. Thinking question: when would you choose MPI_Scan over MPI_Allreduce?
+
+Choose MPI_Scan over MPI_Allreduce when each process needs to know its own
+position or offset within a distributed sequence, not just the final
+total. Concrete example: assigning globally unique IDs to items generated
+independently in parallel across processes. If each process generates
+some number of items locally, MPI_Scan on the local item count gives each
+process a running total, and subtracting its own local count
+(sum_before_me) gives the correct starting offset to number its items
+globally, with no extra communication needed. MPI_Allreduce would only
+tell every process the grand total number of items, not where each
+process's own items should start, so it cannot solve this by itself.
