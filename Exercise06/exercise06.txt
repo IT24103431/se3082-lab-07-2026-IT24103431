@@ -1,0 +1,64 @@
+Exercise 6: Prefix Sums with Scan
+
+File: sum_scan.c
+
+Strategy:
+Same Scatter setup as Exercise 5. MPI_Allreduce is replaced with MPI_Scan,
+which computes a prefix reduction instead of a full reduction. Each
+process receives the cumulative sum of local_sum from rank 0 up to and
+including its own rank, stored in prefix_sum. Unlike Allreduce, each
+process gets a different result, not the same global total. Each process
+also computes sum_before_me = prefix_sum - local_sum, which is the total
+of all chunks before this process.
+
+Key change from Exercise 5:
+long long total_sum = 0;
+MPI_Allreduce(&local_sum, &total_sum, 1, MPI_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+became
+long long prefix_sum = 0;
+MPI_Scan(&local_sum, &prefix_sum, 1, MPI_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+long long sum_before_me = prefix_sum - local_sum;
+
+Verification bonus:
+For values 1..N, the sum of elements 1 through K is K*(K+1)/2. Each
+process computes K = (rank + 1) * chunk_size and checks that prefix_sum
+matches K*(K+1)/2.
+
+Compile:
+mpicc -o sum_scan sum_scan.c
+
+Run:
+mpirun -np 4 ./sum_scan
+
+Result (4 processes):
+Rank 0: local_sum = 31250125000, prefix_sum = 31250125000, sum_before_me = 0
+  Rank 0: K = 250000, formula K*(K+1)/2 = 31250125000, matches prefix_sum? YES
+Rank 1: local_sum = 93750125000, prefix_sum = 125000250000, sum_before_me = 31250125000
+  Rank 1: K = 500000, formula K*(K+1)/2 = 125000250000, matches prefix_sum? YES
+Rank 2: local_sum = 156250125000, prefix_sum = 281250375000, sum_before_me = 125000250000
+  Rank 2: K = 750000, formula K*(K+1)/2 = 281250375000, matches prefix_sum? YES
+Rank 3: local_sum = 218750125000, prefix_sum = 500000500000, sum_before_me = 281250375000
+  Rank 3: K = 1000000, formula K*(K+1)/2 = 500000500000, matches prefix_sum? YES
+
+Final prefix_sum (last rank) = 500000500000
+Expected                     = 500000500000
+Correct?                     = YES
+
+Things to note:
+1. The last rank's prefix_sum equals the global total, 500000500000,
+   confirmed against the K*(K+1)/2 formula and against N*(N+1)/2.
+2. sum_before_me acts as a global offset for each process's chunk. If a
+   process needed globally correct running totals within its own chunk
+   (not just locally correct ones), it would add sum_before_me to its
+   local prefix sums. This is how Scan enables global index assignment
+   and cumulative distributions without extra communication.
+3. Thinking question: when to choose Scan over Allreduce.
+   Choose MPI_Scan over MPI_Allreduce when each process needs to know its
+   own position or offset within a distributed sequence, not just the
+   final total. Example: assigning globally unique IDs to items generated
+   in parallel across processes. Each process generates some number of
+   items locally, then MPI_Scan on the local item count gives each process
+   the correct starting offset (sum_before_me) to number its items
+   globally without needing a separate coordination step. Allreduce would
+   only tell every process the total number of items, not each process's
+   own starting position.
