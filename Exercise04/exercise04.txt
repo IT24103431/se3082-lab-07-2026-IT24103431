@@ -1,1 +1,45 @@
+Exercise 4: Replace Gather with Reduce
 
+File: sum_reduce.c
+
+Strategy:
+Same Scatter setup as Exercise 3. The all_sums array and the manual
+summation loop on root are both removed. MPI_Reduce combines local_sum
+from every process using MPI_SUM and writes the result directly into
+total_sum on root, in a single call. Internally MPI uses a tree based
+algorithm that runs in O(log P) steps, instead of the O(P) Gather plus
+loop from Exercise 3.
+
+Key change from Exercise 3:
+long long *all_sums = ...
+MPI_Gather(&local_sum, 1, MPI_LONG_LONG, all_sums, 1, MPI_LONG_LONG, 0, MPI_COMM_WORLD);
+if (rank == 0) { loop over all_sums to add them up }
+became
+long long total_sum = 0;
+MPI_Reduce(&local_sum, &total_sum, 1, MPI_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
+
+Compile:
+mpicc -o sum_reduce sum_reduce.c
+
+Run:
+mpirun -np 4 ./sum_reduce
+
+Result (4 processes):
+Rank 0: summed local chunk of 250000 elements => local_sum = 31250125000
+Rank 1: summed local chunk of 250000 elements => local_sum = 93750125000
+Rank 2: summed local chunk of 250000 elements => local_sum = 156250125000
+Rank 3: summed local chunk of 250000 elements => local_sum = 218750125000
+
+Total sum = 500000500000
+Expected  = 500000500000
+Correct?  = YES
+
+Things to note:
+1. total_sum is only valid on root after MPI_Reduce. Non-root processes
+   have total_sum set to 0 (its initial value), it is never touched by
+   MPI_Reduce on non-root ranks.
+2. No manual summation loop is needed anymore, MPI_Reduce does the
+   combining step internally with MPI_SUM.
+3. If every process needed the total (not just root), a follow-up
+   MPI_Bcast would be required. Allreduce (Exercise 5) does both in one
+   call instead.
