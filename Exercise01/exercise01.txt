@@ -1,0 +1,42 @@
+Exercise 1: Broadcast + Send/Recv
+
+File: sum_bcast.c
+
+Strategy:
+Root fills an array of 1,000,000 integers (values 1 to 1,000,000) and
+broadcasts the entire array to all processes using MPI_Bcast. Each process
+then sums its own chunk of the array locally. Non-root processes send their
+partial sum back to root using MPI_Send, and root receives each one with
+MPI_Recv and adds it to a running total.
+
+Compile:
+mpicc -o sum_bcast sum_bcast.c
+
+Run:
+mpirun -np 4 ./sum_bcast
+
+Result (4 processes):
+Rank 0: summed indices [0, 250000) => local_sum = 31250125000
+Rank 1: summed indices [250000, 500000) => local_sum = 93750125000
+Rank 2: summed indices [500000, 750000) => local_sum = 156250125000
+Rank 3: summed indices [750000, 1000000) => local_sum = 218750125000
+
+Total sum = 500000500000
+Expected  = 500000500000
+Correct?  = YES
+
+Things to note:
+1. Every process allocates and receives the FULL 1,000,000 element array,
+   even though each one only needs its own chunk. This wastes memory,
+   especially as the number of processes grows.
+2. The Send/Recv loop on root is O(P), root receives from each process
+   one at a time instead of all at once.
+3. MPI_Bcast must be called by every process, not just root. If it were
+   placed inside an "if (rank == 0)" block, the program would deadlock
+   because the other processes would never reach a matching Bcast call.
+
+Environment notes:
+Ran using OpenMPI inside WSL2 Ubuntu (mpicc / mpirun). MPICH's default
+process launcher did not coordinate processes correctly under WSL2, each
+process started as its own single process job instead of a group of 4.
+Switching to openmpi-bin and libopenmpi-dev fixed this.
