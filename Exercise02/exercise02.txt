@@ -1,1 +1,45 @@
+Exercise 2: Replace Broadcast with Scatter
 
+File: sum_scatter.c
+
+Strategy:
+Only root allocates the full 1,000,000 element array. Every process
+(including root) allocates a small local_chunk buffer of size N / size.
+MPI_Scatter divides the array on root and sends exactly one chunk to each
+process, instead of broadcasting the entire array to everyone. Each process
+sums its own local_chunk. The Send/Recv collection of partial sums is kept
+unchanged from Exercise 1.
+
+Key change from Exercise 1:
+MPI_Bcast(array, N, MPI_INT, 0, MPI_COMM_WORLD);
+became
+MPI_Scatter(array, chunk_size, MPI_INT, local_chunk, chunk_size, MPI_INT, 0, MPI_COMM_WORLD);
+
+Note: sendcount is chunk_size (N / size), the amount sent to EACH process,
+not N (the total array size). This is the common mistake called out in the
+README.
+
+Compile:
+mpicc -o sum_scatter sum_scatter.c
+
+Run:
+mpirun -np 4 ./sum_scatter
+
+Result (4 processes):
+Rank 0: summed local chunk of 250000 elements => local_sum = 31250125000
+Rank 1: summed local chunk of 250000 elements => local_sum = 93750125000
+Rank 2: summed local chunk of 250000 elements => local_sum = 156250125000
+Rank 3: summed local chunk of 250000 elements => local_sum = 218750125000
+
+Total sum = 500000500000
+Expected  = 500000500000
+Correct?  = YES
+
+Things to note:
+1. Root is now the only process that allocates the full array. Non-root
+   processes only allocate chunk_size elements, which saves memory compared
+   to Exercise 1, especially as process count grows.
+2. Scatter sends distinct data to each process in one call, unlike Bcast
+   which sends the same full array to everyone.
+3. The Send/Recv collection loop on root is still O(P), this part has not
+   changed yet, it gets replaced with Gather in Exercise 3.
