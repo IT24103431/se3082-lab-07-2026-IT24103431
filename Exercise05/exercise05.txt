@@ -1,1 +1,51 @@
+Exercise 5: Replace Reduce with Allreduce
 
+File: sum_allreduce.c
+
+Strategy:
+Same Scatter setup as Exercise 4. MPI_Reduce is replaced with
+MPI_Allreduce, which has no root parameter, the combined result is
+delivered to every process instead of just root. Since every process now
+knows total_sum, every process (not just root) prints its own local_sum,
+the total_sum, and the percentage of the total that its chunk contributed.
+The final verification print (Total sum, Expected, Correct, Time) is kept
+on root only, so it prints once instead of once per process.
+
+Key change from Exercise 4:
+long long total_sum = 0;
+MPI_Reduce(&local_sum, &total_sum, 1, MPI_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
+became
+long long total_sum = 0;
+MPI_Allreduce(&local_sum, &total_sum, 1, MPI_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+
+Also added, printed by every process:
+double percentage = (double)local_sum / (double)total_sum * 100.0;
+printf("Rank %d: local_sum = %lld, total_sum = %lld, contribution = %.2f%%\n", ...)
+
+Compile:
+mpicc -o sum_allreduce sum_allreduce.c
+
+Run:
+mpirun -np 4 ./sum_allreduce
+
+Result (4 processes):
+Rank 0: local_sum = 31250125000, total_sum = 500000500000, contribution = 6.25%
+Rank 1: local_sum = 93750125000, total_sum = 500000500000, contribution = 18.75%
+Rank 2: local_sum = 156250125000, total_sum = 500000500000, contribution = 31.25%
+Rank 3: local_sum = 218750125000, total_sum = 500000500000, contribution = 43.75%
+
+Total sum = 500000500000
+Expected  = 500000500000
+Correct?  = YES
+
+Things to note:
+1. Every process has the correct total_sum after Allreduce, not just root.
+   This is what makes the per rank percentage calculation possible without
+   any extra communication.
+2. Allreduce is typically implemented more efficiently than Reduce
+   followed by a separate Bcast, MPI uses algorithms like recursive
+   doubling or butterfly internally.
+3. With 4 equal chunks, each rank's contribution should be close to 25%,
+   but not exactly equal since the chunks contain different value ranges
+   (later chunks have larger numbers, so they contribute a larger
+   percentage of the total).
