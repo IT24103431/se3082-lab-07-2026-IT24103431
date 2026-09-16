@@ -1,1 +1,47 @@
+Exercise 3: Replace Send/Recv with Gather
 
+File: sum_gather.c
+
+Strategy:
+Same Scatter setup as Exercise 2. The manual Send/Recv loop that collected
+partial sums on root is replaced with a single MPI_Gather call. Gather
+collects one long long (local_sum) from every process, including root, and
+assembles them in rank order into the all_sums array on root. Root then
+loops through all_sums to compute the total, since Gather only collects
+data, it does not perform any computation.
+
+Key change from Exercise 2:
+if (rank != 0) {
+    MPI_Send(&local_sum, 1, MPI_LONG_LONG, 0, 0, MPI_COMM_WORLD);
+} else {
+    ... manual MPI_Recv loop over all ranks ...
+}
+became
+MPI_Gather(&local_sum, 1, MPI_LONG_LONG, all_sums, 1, MPI_LONG_LONG, 0, MPI_COMM_WORLD);
+followed by a simple loop on root to sum all_sums[0..size).
+
+Compile:
+mpicc -o sum_gather sum_gather.c
+
+Run:
+mpirun -np 4 ./sum_gather
+
+Result (4 processes):
+Rank 0: summed local chunk of 250000 elements => local_sum = 31250125000
+Rank 1: summed local chunk of 250000 elements => local_sum = 93750125000
+Rank 2: summed local chunk of 250000 elements => local_sum = 156250125000
+Rank 3: summed local chunk of 250000 elements => local_sum = 218750125000
+
+Total sum = 500000500000
+Expected  = 500000500000
+Correct?  = YES
+
+Things to note:
+1. Gather replaces the entire manual Send/Recv loop with one call, but it
+   still requires a manual summation loop afterward since Gather only
+   collects values, it does not reduce them.
+2. all_sums is only meaningful on root. On non-root processes it stays
+   NULL and is never read.
+3. This is still O(P) work overall on root, both the gather and the manual
+   summation loop scale with the number of processes. Reduce (Exercise 4)
+   removes the need for the manual loop entirely.
